@@ -3,12 +3,18 @@ import json
 import requests
 import time
 import os
+from dotenv import load_dotenv
+from flask import Flask
+
+load_dotenv()
 
 sqs = boto3.client('sqs', region_name=os.getenv('AWS_REGION', 'eu-central-1'))
 s3 = boto3.client('s3', region_name=os.getenv('AWS_REGION', 'eu-central-1'))
 
 QUEUE_URL = os.getenv('SQS_QUEUE_URL')
 FRONTEND_URL = os.getenv('FRONTEND_URL')
+
+app = Flask(__name__)
 
 def poll_sqs():
     while True:
@@ -32,14 +38,12 @@ def poll_sqs():
 
                 print(f"Файл: {key}, Размер: {size_bytes} байт")
 
-
                 r = requests.post(FRONTEND_URL + '/size-report', json={
                     "filename": key,
                     "size_bytes": size_bytes
                 })
                 if r.status_code != 200:
                     print(f"Ошибка отправки данных во фронтенд: {r.status_code} {r.text}")
-
 
                 sqs.delete_message(
                     QueueUrl=QUEUE_URL,
@@ -51,6 +55,14 @@ def poll_sqs():
 
         time.sleep(1)
 
+@app.route("/")
+def hello():
+    return "Inspector работает!", 200
+
 if __name__ == '__main__':
     print("Запуск Inspector...")
-    poll_sqs()
+    import threading
+    threading.Thread(target=poll_sqs, daemon=True).start()
+
+    # Важно: слушать на всех интерфейсах
+    app.run(host="0.0.0.0", port=5000)
