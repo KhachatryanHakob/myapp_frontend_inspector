@@ -64,6 +64,6 @@ app.get('/sizes', (req, res) => {
   res.json(fileSizes);
 });
 
-app.listen(port, () => {
-  console.log(`Frontend запущен на http://localhost:${port}`);
+app.listen(port, '0.0.0.0', () => {
+  console.log(`Frontend запущен на http://0.0.0.0:${port}`);
 });
