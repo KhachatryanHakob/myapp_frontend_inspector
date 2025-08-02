@@ -5,6 +5,10 @@ const fs = require('fs');
 const app = express();
 const port = 3000;
 
+require('dotenv').config();
+const cors = require('cors');
+app.use(cors());
+
 const fileSizes = {};
 
 app.use(express.json());
