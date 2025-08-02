@@ -28,7 +28,7 @@ app.post('/upload', upload.single('file'), (req, res) => {
   const stream = fs.createReadStream(file.path);
 
   const params = {
-    Bucket: process.env.S3_BUCKET_NAME || 'my-app-bucket-1254',
+    Bucket: process.env.S3_BUCKET_NAME || 'hakob-myapp-bucket-20250802',
     Key: file.originalname,
     Body: stream,
   };
