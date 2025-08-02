@@ -17,7 +17,7 @@ const s3 = new AWS.S3({
 });
 
 const upload = multer({ dest: 'uploads/' });
-
+app.use(express.static('public'));
 
 app.post('/upload', upload.single('file'), (req, res) => {
   const file = req.file;
