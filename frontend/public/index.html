@@ -1,87 +1,76 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html>
+
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Загрузка файла</title>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      max-width: 500px;
-      margin: 40px auto;
-      padding: 20px;
-      background: #f9f9f9;
-      border-radius: 8px;
-    }
-    h1 {
-      text-align: center;
-      color: #333;
-    }
-    input[type="file"] {
-      display: block;
-      margin: 20px 0;
-    }
-    button {
-      background-color: #007bff;
-      color: white;
-      padding: 10px 20px;
-      border: none;
-      border-radius: 5px;
-      cursor: pointer;
-    }
-    button:disabled {
-      background-color: #ccc;
-      cursor: not-allowed;
-    }
-    #status {
-      margin-top: 15px;
-      color: green;
-    }
-  </style>
+  <meta charset="UTF-8">
+  <title>File Upload</title>
 </head>
+
 <body>
-  <h1>Загрузить файл</h1>
-  <form id="uploadForm">
-    <input type="file" id="fileInput" name="file" required />
-    <button type="submit">Загрузить</button>
+  <h1>Upload File</h1>
+  <form id="upload-form" enctype="multipart/form-data">
+    <input type="file" name="file" required />
+    <button type="submit">Upload</button>
   </form>
-  <div id="status"></div>
+
+  <div id="result" style="margin-top: 20px; font-weight: bold;"></div>
 
   <script>
-    const form = document.getElementById('uploadForm');
-    const fileInput = document.getElementById('fileInput');
-    const statusDiv = document.getElementById('status');
+    const form = document.getElementById('upload-form');
+    const result = document.getElementById('result');
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
-      if (!fileInput.files.length) {
-        statusDiv.textContent = 'Пожалуйста, выберите файл.';
-        return;
-      }
 
+      const fileInput = form.querySelector('input[type="file"]');
       const file = fileInput.files[0];
       const formData = new FormData();
       formData.append('file', file);
 
-      statusDiv.textContent = 'Загрузка...';
+      result.innerText = "Uploading file...";
 
       try {
-        const response = await fetch('/upload', {
+        // 1. Upload the file to the server
+        const uploadRes = await fetch('/upload', {
           method: 'POST',
-          body: formData,
+          body: formData
         });
 
-        if (!response.ok) {
-          throw new Error('Ошибка при загрузке файла');
+        const uploadData = await uploadRes.json();
+
+        if (!uploadRes.ok) {
+          throw new Error(uploadData.error || 'Upload error');
         }
 
-        const data = await response.json();
-        statusDiv.textContent = 'Файл успешно загружен! URL: ' + data.location;
-      } catch (error) {
-        statusDiv.textContent = 'Ошибка: ' + error.message;
-        statusDiv.style.color = 'red';
+        // 2. Wait for inspector to return file size
+        const maxRetries = 20;
+        let retries = 0;
+        let fileSize = null;
+
+        while (retries < maxRetries && fileSize === null) {
+          await new Promise(r => setTimeout(r, 1000)); // wait 1 second
+
+          const sizesRes = await fetch('/sizes');
+          const sizesData = await sizesRes.json();
+          if (sizesData[file.name]) {
+            fileSize = sizesData[file.name];
+          }
+
+          retries++;
+        }
+
+        if (fileSize !== null) {
+          result.innerText = `File "${file.name}" size: ${fileSize} bytes`;
+        } else {
+          result.innerText = `⚠️ File size for "${file.name}" not received. Please try again later.`;
+        }
+
+      } catch (err) {
+        console.error(err);
+        result.innerText = '❌ Error: ' + err.message;
       }
     });
   </script>
 </body>
+
 </html>

@@ -35,14 +35,14 @@ def poll_sqs():
                 head_obj = s3.head_object(Bucket=bucket, Key=key)
                 size_bytes = head_obj['ContentLength']
 
-                print(f"Файл: {key}, Размер: {size_bytes} байт")
+                print(f"File: {key}, Size: {size_bytes} bytes")
 
                 r = requests.post(FRONTEND_URL + '/size-report', json={
                     "filename": key,
                     "size_bytes": size_bytes
                 })
                 if r.status_code != 200:
-                    print(f"Ошибка отправки данных во фронтенд: {r.status_code} {r.text}")
+                    print(f"Error sending data to frontend: {r.status_code} {r.text}")
 
                 sqs.delete_message(
                     QueueUrl=QUEUE_URL,
@@ -50,16 +50,16 @@ def poll_sqs():
                 )
 
             except Exception as e:
-                print("Ошибка обработки:", e)
+                print("Error handling message:", e)
 
         time.sleep(1)
 
 @app.route("/")
 def hello():
-    return "Inspector работает!", 200
+    return "Inspector is running!", 200
 
 if __name__ == '__main__':
-    print("Запуск Inspector...")
+    print("Starting Inspector...")
     import threading
     threading.Thread(target=poll_sqs, daemon=True).start()
 
