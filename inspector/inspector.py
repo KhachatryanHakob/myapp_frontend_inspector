@@ -32,7 +32,6 @@ def poll_sqs():
                 record = s3_event['Records'][0]
                 bucket = record['s3']['bucket']['name']
                 key = record['s3']['object']['key']
-
                 head_obj = s3.head_object(Bucket=bucket, Key=key)
                 size_bytes = head_obj['ContentLength']
 
@@ -64,5 +63,4 @@ if __name__ == '__main__':
     import threading
     threading.Thread(target=poll_sqs, daemon=True).start()
 
-    # Важно: слушать на всех интерфейсах
     app.run(host="0.0.0.0", port=5000)
