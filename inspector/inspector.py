@@ -4,6 +4,8 @@ import requests
 import time
 import os
 from flask import Flask
+from urllib.parse import unquote_plus
+import botocore.exceptions
 
 AWS_REGION = os.getenv('AWS_REGION', 'eu-central-1')
 QUEUE_URL = os.getenv('SQS_QUEUE_URL')
@@ -28,18 +30,30 @@ def poll_sqs():
             messages = response.get('Messages', [])
             for msg in messages:
                 try:
-                  
                     body = json.loads(msg['Body'])
                     s3_event = json.loads(body['Message'])
+
                     record = s3_event['Records'][0]
                     bucket = record['s3']['bucket']['name']
-                    key = record['s3']['object']['key']
+                    raw_key = record['s3']['object']['key']
+                    key = unquote_plus(raw_key)  # Декодирование ключа
 
-                 
-                    head_obj = s3.head_object(Bucket=bucket, Key=key)
+                    print(f"[INFO] Trying head_object for bucket={bucket}, key={key}")
+
+                    # Повторная попытка до 5 раз
+                    for attempt in range(5):
+                        try:
+                            head_obj = s3.head_object(Bucket=bucket, Key=key)
+                            break
+                        except botocore.exceptions.ClientError as e:
+                            print(f"[WARN] Attempt {attempt+1}: head_object failed, retrying in 1s...")
+                            time.sleep(1)
+                    else:
+                        print(f"[ERROR] Failed to get head_object for {key} after 5 attempts.")
+                        continue
+
                     size_bytes = head_obj['ContentLength']
-
-                    print(f"File: {key}, Size: {size_bytes} bytes")
+                    print(f"[SUCCESS] File: {key}, Size: {size_bytes} bytes")
 
                     response = requests.post(f"{FRONTEND_URL}/size-report", json={
                         "filename": key,
@@ -47,19 +61,19 @@ def poll_sqs():
                     })
 
                     if response.status_code != 200:
-                        print(f"Error sending data to frontend: {response.status_code} {response.text}")
+                        print(f"[ERROR] Failed to send size to frontend: {response.status_code} {response.text}")
 
-                    
                     sqs.delete_message(
                         QueueUrl=QUEUE_URL,
                         ReceiptHandle=msg['ReceiptHandle']
                     )
+                    print(f"[INFO] Message deleted from SQS.")
 
                 except Exception as e:
-                    print("Error handling message:", e)
+                    print(f"[ERROR] Error handling message: {e}")
 
         except Exception as e:
-            print("Error polling SQS:", e)
+            print(f"[ERROR] Error polling SQS: {e}")
 
         time.sleep(1)
 
@@ -68,10 +82,9 @@ def hello():
     return "Inspector is running!", 200
 
 if __name__ == '__main__':
-    print("Starting Inspector...")
-  
+    print("[INFO] Starting Inspector...")
+
     import threading
     threading.Thread(target=poll_sqs, daemon=True).start()
 
-    
     app.run(host="0.0.0.0", port=5000)
