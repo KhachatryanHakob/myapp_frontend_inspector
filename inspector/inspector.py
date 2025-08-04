@@ -5,8 +5,6 @@ import time
 import os
 from flask import Flask
 
-# No dotenv import or load_dotenv — we expect env vars from OS environment
-
 AWS_REGION = os.getenv('AWS_REGION', 'eu-central-1')
 QUEUE_URL = os.getenv('SQS_QUEUE_URL')
 FRONTEND_URL = os.getenv('FRONTEND_URL')
@@ -30,27 +28,28 @@ def poll_sqs():
             messages = response.get('Messages', [])
             for msg in messages:
                 try:
+                  
                     body = json.loads(msg['Body'])
                     s3_event = json.loads(body['Message'])
                     record = s3_event['Records'][0]
                     bucket = record['s3']['bucket']['name']
                     key = record['s3']['object']['key']
 
-                    # Use head_object to get file size without downloading
+                 
                     head_obj = s3.head_object(Bucket=bucket, Key=key)
                     size_bytes = head_obj['ContentLength']
 
                     print(f"File: {key}, Size: {size_bytes} bytes")
 
-                    r = requests.post(FRONTEND_URL + '/size-report', json={
+                    response = requests.post(f"{FRONTEND_URL}/size-report", json={
                         "filename": key,
                         "size_bytes": size_bytes
                     })
 
-                    if r.status_code != 200:
-                        print(f"Error sending data to frontend: {r.status_code} {r.text}")
+                    if response.status_code != 200:
+                        print(f"Error sending data to frontend: {response.status_code} {response.text}")
 
-                    # Delete message after successful processing
+                    
                     sqs.delete_message(
                         QueueUrl=QUEUE_URL,
                         ReceiptHandle=msg['ReceiptHandle']
@@ -70,7 +69,9 @@ def hello():
 
 if __name__ == '__main__':
     print("Starting Inspector...")
+  
     import threading
     threading.Thread(target=poll_sqs, daemon=True).start()
 
+    
     app.run(host="0.0.0.0", port=5000)
