@@ -1,24 +1,34 @@
-require('dotenv').config();
-
 const express = require('express');
 const multer = require('multer');
 const AWS = require('aws-sdk');
 const fs = require('fs');
+
 const app = express();
-const port = 3000;
+const port = process.env.PORT || 3000;
 
 const fileSizes = {};
 
 app.use(express.json());
+app.use(express.static('public'));
+
+// Get AWS config from environment variables (set by Terraform or EC2)
+const awsRegion = process.env.AWS_REGION || 'eu-central-1';
+const accessKeyId = process.env.AWS_ACCESS_KEY_ID;
+const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY;
+const s3Bucket = process.env.S3_BUCKET_NAME || 'my-app-bucket-1254';
+
+if (!accessKeyId || !secretAccessKey) {
+  console.error("AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY must be set as environment variables!");
+  process.exit(1);
+}
 
 const s3 = new AWS.S3({
-  region: process.env.AWS_REGION || 'eu-central-1',
-  accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+  region: awsRegion,
+  accessKeyId,
+  secretAccessKey,
 });
 
 const upload = multer({ dest: 'uploads/' });
-app.use(express.static('public'));
 
 app.post('/upload', upload.single('file'), (req, res) => {
   const file = req.file;
@@ -29,13 +39,13 @@ app.post('/upload', upload.single('file'), (req, res) => {
   const stream = fs.createReadStream(file.path);
 
   const params = {
-    Bucket: process.env.S3_BUCKET_NAME || 'my-app-bucket-1254',
+    Bucket: s3Bucket,
     Key: file.originalname,
     Body: stream,
   };
 
   s3.upload(params, (err, data) => {
-
+    // Clean up the uploaded file after sending to S3
     fs.unlink(file.path, (unlinkErr) => {
       if (unlinkErr) console.error('Error removing temporary file:', unlinkErr);
     });
@@ -51,10 +61,10 @@ app.post('/upload', upload.single('file'), (req, res) => {
 
 app.post('/size-report', (req, res) => {
   const { filename, size_bytes } = req.body;
-  if (!filename || !size_bytes) {
+  if (!filename || typeof size_bytes !== 'number') {
     return res.status(400).json({ error: 'Invalid data' });
   }
-  console.log(`Received file size ${filename}: ${size_bytes} bytes`);
+  console.log(`Received file size for ${filename}: ${size_bytes} bytes`);
   fileSizes[filename] = size_bytes;
   res.sendStatus(200);
 });
