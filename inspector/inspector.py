@@ -1,86 +1,109 @@
 import boto3
-import json
-import requests
 import time
 import os
+import requests
+import json
+
+print("Starting inspector...")
+
+# Load environment variables
+bucket_name = os.getenv("BUCKET_NAME")
+queue_name = os.getenv("QUEUE_NAME")
+frontend_url = os.getenv("FRONTEND_NOTIFY_URL")
+
+print(f"BUCKET_NAME: {bucket_name}")
+print(f"QUEUE_NAME: {queue_name}")
+print(f"FRONTEND_NOTIFY_URL: {frontend_url}")
+
+# AWS region and credentials from environment (exported in .env)
+region = os.getenv("AWS_REGION")
+
+sqs = boto3.client('sqs', region_name=region)
+s3 = boto3.client('s3', region_name=region)
+
+# Get queue URL
+try:
+    queue_url = sqs.get_queue_url(QueueName=queue_name)["QueueUrl"]
+    print(f"Successfully connected to queue: {queue_url}")
+except Exception as e:
+    print(f"Error connecting to queue: {e}")
+    try:
+        queues = sqs.list_queues()
+        print(f"Available queues: {queues}")
+    except Exception as e2:
+        print(f"Error listing queues: {e2}")
+    exit(1)
+
+print("Inspector is running and listening to the queue...")
+
+# Main loop
+while True:
+    try:
+        messages = sqs.receive_message(QueueUrl=queue_url, MaxNumberOfMessages=1)
+
+        if 'Messages' in messages:
+            for msg in messages['Messages']:
+                print("Received message:", msg['Body'])
+
+                try:
+                    message_data = json.loads(msg['Body'])
+
+                    if 'Records' in message_data:
+                        for record in message_data['Records']:
+                            if record.get('eventName') == 'ObjectCreated:Put':
+                                s3_data = record.get('s3', {})
+                                object_data = s3_data.get('object', {})
+
+                                key = object_data.get('key', '')
+                                size = object_data.get('size', 0)
+
+                                print(f"Extracted file: {key}")
+                                print(f"File size: {size} bytes")
+
+                                # Notify frontend
+                                data = {
+                                    "filename": key,
+                                    "size": size
+                                }
+
+                                try:
+                                    res = requests.post(frontend_url, json=data)
+                                    print(f"Notification sent: {res.status_code}")
+                                except Exception as e:
+                                    print(f"Error sending notification: {e}")
+
+                except json.JSONDecodeError as e:
+                    print(f"Error parsing JSON message: {e}")
+                except Exception as e:
+                    print(f"Error processing message: {e}")
+
+                # Delete message from queue
+                sqs.delete_message(QueueUrl=queue_url, ReceiptHandle=msg['ReceiptHandle'])
+        else:
+            time.sleep(1)
+
+    except Exception as e:
+        print(f"Error in main loop: {e}")
+        time.sleep(5)
+
+
 from flask import Flask
-from urllib.parse import unquote_plus
-import botocore.exceptions
-
-AWS_REGION = os.getenv('AWS_REGION', 'eu-central-1')
-QUEUE_URL = os.getenv('SQS_QUEUE_URL')
-FRONTEND_URL = os.getenv('FRONTEND_URL')
-
-if not QUEUE_URL or not FRONTEND_URL:
-    raise Exception("Environment variables SQS_QUEUE_URL and FRONTEND_URL must be set")
-
-sqs = boto3.client('sqs', region_name=AWS_REGION)
-s3 = boto3.client('s3', region_name=AWS_REGION)
+from threading import Thread
 
 app = Flask(__name__)
 
-def poll_sqs():
-    while True:
-        try:
-            response = sqs.receive_message(
-                QueueUrl=QUEUE_URL,
-                MaxNumberOfMessages=1,
-                WaitTimeSeconds=10
-            )
-            messages = response.get('Messages', [])
-            for msg in messages:
-                try:
-                    body = json.loads(msg['Body'])
-
-                    bucket = body['bucket']
-                    key = body['key']
-                    print(f"[INFO] Received from SQS → bucket: {bucket}, key: {key}")
-
-                    for attempt in range(5):
-                        try:
-                            head_obj = s3.head_object(Bucket=bucket, Key=key)
-                            break
-                        except botocore.exceptions.ClientError as e:
-                            print(f"[WARN] Attempt {attempt+1}: head_object failed, retrying in 1s...")
-                            time.sleep(1)
-                    else:
-                        print(f"[ERROR] Failed to get head_object for {key} after 5 attempts.")
-                        continue
-
-                    size_bytes = head_obj['ContentLength']
-                    print(f"[SUCCESS] File: {key}, Size: {size_bytes} bytes")
-
-                    response = requests.post(f"{FRONTEND_URL}/size-report", json={
-                        "filename": key,
-                        "size_bytes": size_bytes
-                    })
-
-                    if response.status_code != 200:
-                        print(f"[ERROR] Failed to send size to frontend: {response.status_code} {response.text}")
-
-                    sqs.delete_message(
-                        QueueUrl=QUEUE_URL,
-                        ReceiptHandle=msg['ReceiptHandle']
-                    )
-                    print(f"[INFO] Message deleted from SQS.")
-
-                except Exception as e:
-                    print(f"[ERROR] Error handling message: {e}")
-
-        except Exception as e:
-            print(f"[ERROR] Error polling SQS: {e}")
-
-        time.sleep(1)
-
-
 @app.route("/")
-def hello():
-    return "Inspector is running!", 200
+def index():
+    return "Inspector is running"
 
-if __name__ == '__main__':
-    print("[INFO] Starting Inspector...")
-
-    import threading
-    threading.Thread(target=poll_sqs, daemon=True).start()
-
+def run_flask():
     app.run(host="0.0.0.0", port=5000)
+
+
+if __name__ == "__main__":
+
+    flask_thread = Thread(target=run_flask)
+    flask_thread.start()
+
+   
+    poll_sqs()

@@ -2,89 +2,37 @@
 <html>
 
 <head>
-  <meta charset="UTF-8">
-  <title>File Upload</title>
+  <title>File Upload App</title>
 </head>
 
 <body>
-  <h1>Upload File</h1>
-  <form id="upload-form" enctype="multipart/form-data">
-    <input type="file" name="file" required accept="*/*" />
-    <button type="submit">Upload</button>
+  <h1>Загрузка файла</h1>
+  <form action="/upload" method="POST" enctype="multipart/form-data">
+    <input type="file" name="file" />
+    <button type="submit">Загрузить</button>
   </form>
 
-  <div id="result" style="margin-top: 20px; font-weight: bold;"></div>
+  <h2>Последний загруженный файл:</h2>
+  <div id="status">Загрузка...</div>
 
   <script>
-    const form = document.getElementById('upload-form');
-    const result = document.getElementById('result');
-    const submitBtn = form.querySelector('button[type="submit"]');
+    async function fetchLastUpload() {
+      const response = await fetch('/last-upload');
+      const data = await response.json();
 
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-
-      const fileInput = form.querySelector('input[type="file"]');
-      const file = fileInput.files[0];
-      if (!file) {
-        result.innerText = '⚠️ Please select a file before uploading.';
-        return;
+      const statusDiv = document.getElementById('status');
+      if (data.filename && data.size) {
+        statusDiv.innerText = `📁 Файл: ${data.filename}, Размер: ${data.size} байт`;
+      } else {
+        statusDiv.innerText = 'Пока ничего не загружено';
       }
+    }
 
-      const formData = new FormData();
-      formData.append('file', file);
+    // Обновлять каждые 3 секунды
+    setInterval(fetchLastUpload, 3000);
 
-
-      submitBtn.disabled = true;
-      result.innerText = "Uploading file...";
-
-      try {
-
-        const uploadRes = await fetch('/upload', {
-          method: 'POST',
-          body: formData
-        });
-
-        const uploadData = await uploadRes.json();
-
-        if (!uploadRes.ok) {
-          throw new Error(uploadData.error || 'Upload error');
-        }
-
-
-        const maxRetries = 20;
-        let retries = 0;
-        let fileSize = null;
-
-        while (retries < maxRetries && fileSize === null) {
-          await new Promise(r => setTimeout(r, 1000));
-          const sizesRes = await fetch('/sizes');
-          if (!sizesRes.ok) {
-            throw new Error('Failed to fetch sizes');
-          }
-
-          const sizesData = await sizesRes.json();
-          if (sizesData[file.name]) {
-            fileSize = sizesData[file.name];
-          }
-
-          retries++;
-        }
-
-        if (fileSize !== null) {
-          result.innerText = `File "${file.name}" size: ${fileSize} bytes`;
-          fileInput.value = '';
-        } else {
-          result.innerText = `⚠️ File size for "${file.name}" not received. Please try again later.`;
-        }
-
-      } catch (err) {
-        console.error(err);
-        result.innerText = '❌ Error: ' + err.message;
-      } finally {
-
-        submitBtn.disabled = false;
-      }
-    });
+    // Первый запуск
+    fetchLastUpload();
   </script>
 </body>
 
