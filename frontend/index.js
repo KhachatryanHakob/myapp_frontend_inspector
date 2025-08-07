@@ -11,18 +11,25 @@ const fileSizes = {};
 app.use(express.json());
 app.use(express.static('public'));
 
-// Get AWS config from environment variables (set by Terraform or EC2)
+// Get AWS configuration from environment variables
 const awsRegion = process.env.AWS_REGION || 'eu-central-1';
 const accessKeyId = process.env.AWS_ACCESS_KEY_ID;
 const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY;
 const s3Bucket = process.env.S3_BUCKET_NAME || 'my-app-bucket-1254';
+const sqsQueueUrl = process.env.SQS_QUEUE_URL;
 
 if (!accessKeyId || !secretAccessKey) {
-  console.error("AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY must be set as environment variables!");
+  console.error("AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY must be set!");
   process.exit(1);
 }
 
 const s3 = new AWS.S3({
+  region: awsRegion,
+  accessKeyId,
+  secretAccessKey,
+});
+
+const sqs = new AWS.SQS({
   region: awsRegion,
   accessKeyId,
   secretAccessKey,
@@ -45,14 +52,37 @@ app.post('/upload', upload.single('file'), (req, res) => {
   };
 
   s3.upload(params, (err, data) => {
-    // Clean up the uploaded file after sending to S3
+    // Remove temporary file after upload
     fs.unlink(file.path, (unlinkErr) => {
       if (unlinkErr) console.error('Error removing temporary file:', unlinkErr);
     });
 
     if (err) {
-      console.error('Upload error:', err);
+      console.error('S3 upload error:', err);
       return res.status(500).json({ error: 'Upload error' });
+    }
+
+    console.log('File uploaded to S3:', data.Location);
+
+    // Send message to SQS
+    if (sqsQueueUrl) {
+      const sqsParams = {
+        QueueUrl: sqsQueueUrl,
+        MessageBody: JSON.stringify({
+          bucket: s3Bucket,
+          key: file.originalname,
+        }),
+      };
+
+      sqs.sendMessage(sqsParams, (sqsErr, sqsData) => {
+        if (sqsErr) {
+          console.error('Error sending message to SQS:', sqsErr);
+        } else {
+          console.log('Message sent to SQS. ID:', sqsData.MessageId);
+        }
+      });
+    } else {
+      console.warn("SQS_QUEUE_URL not set — message not sent to queue.");
     }
 
     res.json({ message: 'File successfully uploaded to S3', location: data.Location });
