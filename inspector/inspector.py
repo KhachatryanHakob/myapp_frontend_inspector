@@ -31,16 +31,11 @@ def poll_sqs():
             for msg in messages:
                 try:
                     body = json.loads(msg['Body'])
-                    s3_event = json.loads(body['Message'])
 
-                    record = s3_event['Records'][0]
-                    bucket = record['s3']['bucket']['name']
-                    raw_key = record['s3']['object']['key']
-                    key = unquote_plus(raw_key)  # Декодирование ключа
+                    bucket = body['bucket']
+                    key = body['key']
+                    print(f"[INFO] Received from SQS → bucket: {bucket}, key: {key}")
 
-                    print(f"[INFO] Trying head_object for bucket={bucket}, key={key}")
-
-                    # Повторная попытка до 5 раз
                     for attempt in range(5):
                         try:
                             head_obj = s3.head_object(Bucket=bucket, Key=key)
@@ -76,6 +71,7 @@ def poll_sqs():
             print(f"[ERROR] Error polling SQS: {e}")
 
         time.sleep(1)
+
 
 @app.route("/")
 def hello():

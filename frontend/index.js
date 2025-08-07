@@ -65,6 +65,7 @@ app.post('/upload', upload.single('file'), (req, res) => {
     console.log('File uploaded to S3:', data.Location);
 
     // Send message to SQS
+
     if (sqsQueueUrl) {
       const sqsParams = {
         QueueUrl: sqsQueueUrl,
@@ -81,9 +82,8 @@ app.post('/upload', upload.single('file'), (req, res) => {
           console.log('Message sent to SQS. ID:', sqsData.MessageId);
         }
       });
-    } else {
-      console.warn("SQS_QUEUE_URL not set — message not sent to queue.");
     }
+
 
     res.json({ message: 'File successfully uploaded to S3', location: data.Location });
   });
