@@ -7,33 +7,19 @@
 
 <body>
   <h1>Загрузка файла</h1>
-  <form action="/upload" method="POST" enctype="multipart/form-data">
-    <input type="file" name="file" />
+  <form id="upload-form" action="/upload" method="POST" enctype="multipart/form-data">
+    <input type="file" name="file" id="file-input" />
     <button type="submit">Загрузить</button>
   </form>
 
-  <h2>Последний загруженный файл:</h2>
-  <div id="status">Загрузка...</div>
+  <h2 id="file-info-header">Информация о файле:</h2>
+  <div id="status">
+    <p>Название файла: <span id="file-name">Нет информации</span></p>
+    <p>Размер файла: <span id="file-size">Нет информации</span></p>
+    <p>Статус загрузки: <span id="upload-status">Ожидание выбора файла...</span></p>
+  </div>
 
-  <script>
-    async function fetchLastUpload() {
-      const response = await fetch('/last-upload');
-      const data = await response.json();
-
-      const statusDiv = document.getElementById('status');
-      if (data.filename && data.size) {
-        statusDiv.innerText = `📁 Файл: ${data.filename}, Размер: ${data.size} байт`;
-      } else {
-        statusDiv.innerText = 'Пока ничего не загружено';
-      }
-    }
-
-    // Обновлять каждые 3 секунды
-    setInterval(fetchLastUpload, 3000);
-
-    // Первый запуск
-    fetchLastUpload();
-  </script>
+  <script src="frontend.js"></script>
 </body>
 
 </html>
